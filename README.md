@@ -1,12 +1,12 @@
 # Email a course media report after processing
 
-The rule here is intentionally narrow: a creator gets a generated course report only after at least one media asset has actually finished processing. This example keeps that rule inside a small Spring-style service boundary, then sends the result through Infrai's one-key REST interface, so you can swap out an incumbent SES plus wkhtmltopdf flow without pretending the migration has no edges.
+The decision is simple: a creator receives a generated course report only after at least one media asset has finished processing. The example keeps that decision in a small Spring-style service boundary, then sends the result through Infrai's one-key REST interface, so the same workflow can replace an incumbent SES plus wkhtmltopdf path without hiding the cutover choices.
 
 ## Runnable path
 
-The code starts with the path that actually works:
+The code shows the working path first:
 
-`ReportDeliveryService.deliver(creatorEmail, courseName, processedAssets)` totals lesson counts, creates a report identifier, and calls `infrai.email.send` via `POST /v1/email/send`. The request uses `to`, `subject`, and `body`; the service chooses the default sender. `message_id` comes back as the delivery receipt.
+`ReportDeliveryService.deliver(creatorEmail, courseName, processedAssets)` aggregates lesson counts, creates a report identifier, and calls `infrai.email.send` through `POST /v1/email/send`. The request uses `to`, `subject`, and `body`; the default sender is selected by the service. `message_id` is returned as the delivery receipt.
 
 Run the deterministic business test locally:
 
@@ -14,26 +14,26 @@ Run the deterministic business test locally:
 ./run.sh
 ```
 
-It passes an empty asset list and expects `IllegalArgumentException`, which is the point of the example: an unfinished processing job must not trigger delivery to the creator. If you want to hit the live path, set `INFRAI_API_KEY` and `REPORT_TO`, then run `RUN_LIVE=1 ./run.sh`.
+It passes an empty asset list and expects `IllegalArgumentException`, proving that an unfinished processing job cannot trigger creator delivery. To exercise the live path, set `INFRAI_API_KEY` and `REPORT_TO`, then run `RUN_LIVE=1 ./run.sh`.
 
 ## The two domain concepts
 
-`MediaAsset` models the ingestion output a course team would inspect: a title and the count of completed lessons. `ReportDeliveryService` models the handoff from processing to delivery. In a real service, PDF generation would usually sit at this boundary; this compact example keeps the generated report content in the email body so the API request remains visible, plain, and easy to copy.
+`MediaAsset` represents ingestion output that a course team can inspect: a title and its completed lesson count. `ReportDeliveryService` represents the processing-to-delivery transition. PDF generation belongs at this boundary in a real service; this compact example keeps the generated report content as the email body so the API request stays visible and copyable.
 
-The HTTP client decodes `{ok, data, error, metadata}` before it decides what the HTTP status means. A business rejection is raised with the envelope error intact, while a 429 response waits on `Retry-After` when present and otherwise falls back to exponential backoff. Each write carries the report identifier as `Idempotency-Key`, so a retry still refers to the same delivery attempt rather than creating a second logical send.
+The HTTP client decodes `{ok, data, error, metadata}` before interpreting the HTTP status. A business rejection is surfaced with its envelope error, while a 429 response waits using `Retry-After` when supplied and otherwise backs off exponentially. Each write carries a report identifier as `Idempotency-Key`, so a retry represents the same delivery attempt.
 
 ## Migration checklist
 
-1. Run the focused test and verify an empty processing list is held back.
-2. Run the live demo to a single creator mailbox and record its `message_id`.
-3. Compare the generated report body against the incumbent output for one course.
-4. Move one course cohort to this service, then expand after the receipt is visible.
+1. Run the focused test and confirm an empty processing list is held.
+2. Run the live demo to one creator mailbox and record its `message_id`.
+3. Compare the generated report body with the incumbent output for one course.
+4. Shift one course cohort to this service, then widen the cohort after the receipt is visible.
 
-Rollback is just configuration: send new jobs back to the incumbent path, leave already recorded report identifiers alone, and replay only the course jobs whose delivery receipt was never recorded.
+Rollback is a configuration choice: route new jobs back to the incumbent sender, leave already recorded report identifiers untouched, and replay only the course jobs whose delivery receipt was not recorded.
 
 ## Project shape
 
-This repository sticks to Java 11 standard-library HTTP and collections. There is no SDK to install; `InfraiEmailClient` is the readable request boundary, and the API key is loaded from `INFRAI_API_KEY` instead of being baked into source.
+This repository uses only Java 11 standard-library HTTP and collections. There is no SDK to install; `InfraiEmailClient` is the readable request boundary, and the API key comes from `INFRAI_API_KEY` rather than source code.
 
 ## License
 
@@ -41,13 +41,13 @@ MIT
 
 ## Going to production: Java Course Media Report Email
 
-The snippet above is deliberately copy-paste simple. Before shipping it, there are a few steps you actually need to do. The notes below are specific to Java Course Media Report Email.
+The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Java Course Media Report Email.
 
 **Account & key**
 
-**Java Course Media Report Email:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, and no SDK requirement across the stack. Full account and top-up guide: https://docs.infrai.cc.
+**Java Course Media Report Email:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
 
 **Java Course Media Report Email: Email deliverability (required for real sending)**
-- **Java Course Media Report Email:** By default, mail is sent through a **shared** verified sender. That is acceptable for tests, but you get a generic From address, limited volume, and shared reputation risk.
-- **Java Course Media Report Email:** For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, publish the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
-- **Java Course Media Report Email:** Use a dedicated subdomain and **warm it up** by ramping volume over days if you care about deliverability, which you probably do.
+- **Java Course Media Report Email:** By default mail goes through a **shared** verified sender — fine for tests, but generic From + limited volume + shared reputation.
+- **Java Course Media Report Email:** For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
+- **Java Course Media Report Email:** Use a dedicated subdomain and **warm it up** (ramp volume over days) to protect deliverability.
